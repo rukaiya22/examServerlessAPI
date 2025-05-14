@@ -19,4 +19,5 @@ $ git push origin main
 
 ### The App.
 
+
 The app's infrastructure includes some constructs for a serverless REST API. Its Dynamo table stores information about cinema movie schedules. Examine the seed data in `seed/movies.ts` to fully understand its structure. [NOTE: This current table declaration in the stack file is incomplete and will cause a deployment to fail. The correct code will be provided in the exam question.]
