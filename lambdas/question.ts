@@ -1,69 +1,67 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";
+import { APIGatewayProxyHandler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   QueryCommand,
-  QueryCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import schema from "../shared/types.schema.json";
-const client = createDDbDocClient();
 
+const client = new DynamoDBClient({});
+const ddbDocClient = DynamoDBDocumentClient.from(client);
 
-export const handler: APIGatewayProxyHandlerV2 = async (event) => {
+export const handler: APIGatewayProxyHandler = async (event) => {
+  const tableName = "CinemaTable";
+
+  const cinemaId = Number(event.pathParameters?.cinemaId);
+  const period = event.queryStringParameters?.period;
+
+  if (!cinemaId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: "cinemaId is required" }),
+    };
+  }
+
   try {
-    const cinemaId = event.pathParameters?.cinemaId;
-    const movieId = event.queryStringParameters?.movieId;
+    if (period) {
+      // Query using Local Secondary Index (periodIx)
+      const result = await ddbDocClient.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: "periodIx",
+          KeyConditionExpression: "cinemaId = :cinemaId AND period = :period",
+          ExpressionAttributeValues: {
+            ":cinemaId": cinemaId,
+            ":period": period,
+          },
+        })
+      );
 
-    if (!cinemaId) {
       return {
-        statusCode: 400,
-        body: JSON.stringify({ message: "cinemaId is required" }),
+        statusCode: 200,
+        body: JSON.stringify(result.Items || []),
+      };
+    } else {
+      // Query all movies for the cinemaId
+      const result = await ddbDocClient.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "cinemaId = :cinemaId",
+          ExpressionAttributeValues: {
+            ":cinemaId": cinemaId,
+          },
+        })
+      );
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify(result.Items || []),
       };
     }
-
-    const input: QueryCommandInput = {
-      TableName: "CinemaTable",
-      KeyConditionExpression: "#pk = :cinemaId",
-      ExpressionAttributeNames: {
-        "#pk": "cinemaId",
-      },
-      ExpressionAttributeValues: {
-        ":cinemaId": Number(cinemaId),
-      },
-    };
-
-    if (movieId) {
-      input.KeyConditionExpression += " AND #sk = :movieId";
-      input.ExpressionAttributeNames!["#sk"] = "movieId";
-      input.ExpressionAttributeValues![":movieId"] = movieId;
-    }
-
-    const result = await client.send(new QueryCommand(input));
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(result.Items),
-      headers: { "content-type": "application/json" },
-    };
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: "Failed to fetch data" }),
     };
   }
 };
-
-function createDDbDocClient() {
-  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
-  const marshallOptions = {
-    convertEmptyValues: true,
-    removeUndefinedValues: true,
-    convertClassInstanceToMap: true,
-  };
-  const unmarshallOptions = {
-    wrapNumbers: false,
-  };
-  const translateConfig = { marshallOptions, unmarshallOptions };
-  return DynamoDBDocumentClient.from(ddbClient, translateConfig);
-}
