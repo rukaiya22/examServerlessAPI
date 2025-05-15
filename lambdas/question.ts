@@ -8,25 +8,48 @@ import {
 import schema from "../shared/types.schema.json";
 const client = createDDbDocClient();
 
-export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
+
+export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   try {
-    console.log("Event: ", JSON.stringify(event));
- 
+    const cinemaId = event.pathParameters?.cinemaId;
+    const movieId = event.queryStringParameters?.movieId;
+
+    if (!cinemaId) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ message: "cinemaId is required" }),
+      };
+    }
+
+    const input: QueryCommandInput = {
+      TableName: "CinemaTable",
+      KeyConditionExpression: "#pk = :cinemaId",
+      ExpressionAttributeNames: {
+        "#pk": "cinemaId",
+      },
+      ExpressionAttributeValues: {
+        ":cinemaId": Number(cinemaId),
+      },
+    };
+
+    if (movieId) {
+      input.KeyConditionExpression += " AND #sk = :movieId";
+      input.ExpressionAttributeNames!["#sk"] = "movieId";
+      input.ExpressionAttributeValues![":movieId"] = movieId;
+    }
+
+    const result = await client.send(new QueryCommand(input));
+
     return {
       statusCode: 200,
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({}),
+      body: JSON.stringify(result.Items),
+      headers: { "content-type": "application/json" },
     };
   } catch (error: any) {
-    console.log(JSON.stringify(error));
+    console.error(error);
     return {
       statusCode: 500,
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ error }),
+      body: JSON.stringify({ error: error.message }),
     };
   }
 };
